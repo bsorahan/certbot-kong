@@ -1,0 +1,46 @@
+{
+    "data": [
+        {
+            "created_at": 1560126341,
+            "cert": "-----BEGIN CERTIFICATE-----\n.1.\n-----END CERTIFICATE-----",
+            "id": "cert001",
+            "tags": null,
+            "key": "-----BEGIN PRIVATE KEY-----\n.2.\n-----END PRIVATE KEY-----",
+            "snis": [
+                "a001.example.com",
+                "test.com"
+            ]
+        },
+        {
+            "created_at": 1560167947,
+            "cert": "-----BEGIN CERTIFICATE-----\n.3.\n-----END CERTIFICATE-----",
+            "id": "cert002",
+            "tags": null,
+            "key": "-----BEGIN PRIVATE KEY-----\n.4.\n-----END PRIVATE KEY-----",
+            "snis": [
+                "a002.example.com",
+                "a003.test.com"
+            ]
+        },
+        {
+            "created_at": 1560167947,
+            "cert": "-----BEGIN CERTIFICATE-----\n.5.\n-----END CERTIFICATE-----",
+            "id": "cert003",
+            "tags": null,
+            "key": "-----BEGIN PRIVATE KEY-----\n.6.\n-----END PRIVATE KEY-----",
+            "snis": [
+                "example.com"
+            ]
+        },
+        {
+            "created_at": 1560167947,
+            "cert": "-----BEGIN CERTIFICATE-----\n.7.\n-----END CERTIFICATE-----",
+            "id": "cert004",
+            "tags": null,
+            "key": "-----BEGIN PRIVATE KEY-----\n.8.\n-----END PRIVATE KEY-----",
+            "snis": [
+                "a006.example.com"
+            ]
+        }
+    ]
+}
