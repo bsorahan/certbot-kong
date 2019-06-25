@@ -68,7 +68,7 @@ class KongConfigurator(common.Installer):
 
         return all_names
 
-    def deploy_certs(self, domain, cert_path, key_path, chain_path, fullchain_path):
+    def deploy_cert(self, domain, cert_path, key_path, chain_path, fullchain_path):
         """Deploy certificate.
         :param str domain: domain to deploy certificate file
         :param str cert_path: absolute path to the certificate file
@@ -189,6 +189,7 @@ class KongConfigurator(common.Installer):
             :const:`~certbot.constants.ENHANCEMENTS`
         :rtype: :class:`collections.Iterable` of :class:`str`
         """
+        return []
 
     def save(self, title=None, temporary=False):
         """Saves all changes to the configuration files.
@@ -213,6 +214,12 @@ class KongConfigurator(common.Installer):
         self._config.load_config()
         if title and not temporary:
             self.finalize_checkpoint(title)
+
+    def more_info(self):
+        """Human-readable string to help understand the module"""
+        return (
+            "Configures Kong to install certificates"
+        )
 
     def rollback_checkpoints(self, rollback=1):
         """Revert `rollback` number of configuration checkpoints.

@@ -140,7 +140,7 @@ class Config(object):
         for change in self._queued_changes:
             change.execute(self._api)
         
-        self._queued_changes.clear()
+        self._queued_changes = []
 
 class Change(object):
     """Change interface"""
