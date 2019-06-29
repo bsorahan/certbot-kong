@@ -264,6 +264,14 @@ class KongConfigurator(common.Installer):
         self.save_notes = ""
         self._config.load_config()
 
+    def config_test(self):
+        """Not required for Kong. Config is always valid"""
+        pass
+
+    def restart(self):
+        """Not required for Kong. No restart required to apply configurations"""
+        pass
+
     def _dump_config(self, filename):
         with open(filename, 'wb') as f:
             pickle.dump(self._config, f, pickle.HIGHEST_PROTOCOL)
