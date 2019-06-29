@@ -3,14 +3,14 @@ import mock
 import json
 
 from certbot.compat import os
+from certbot import errors
 
 
 import certbot_kong.kong_admin_api as api
 import certbot_kong.configurator
 from certbot_kong.tests.util import KongTest
 
-
-
+THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 
 class KongInstallerTest(KongTest):
 
@@ -37,7 +37,7 @@ class KongInstallerTest(KongTest):
         hostname = "a005.example.com"
 
         # WHEN deploy certificate to hostname
-        self.configurator.deploy_certs(
+        self.configurator.deploy_cert(
             hostname, 
             self.cert_path, 
             self.key_path, 
@@ -78,11 +78,11 @@ class KongInstallerTest(KongTest):
 
     @mock.patch('certbot_kong.tests.util.MockKongAdminHandler.request_info')
     def test_deploy_hostname_certificate_update(self, request_info):
-        # GIVEN hostname which has a certificate
+        # GIVEN hostname which has a an existing certificate
         hostname = "a002.example.com"
 
         # WHEN deploy certificate to hostname
-        self.configurator.deploy_certs(
+        self.configurator.deploy_cert(
             hostname, 
             self.cert_path, 
             self.key_path, 
@@ -93,7 +93,7 @@ class KongInstallerTest(KongTest):
 
         # THEN api call made to:
         # 1. create the new cert 
-        # 2. Update SNI with the new cert cert:
+        # 2. Update SNI with the new cert:
         calls = request_info.mock_calls
         requests = self._get_write_requests(calls)
 
@@ -130,7 +130,7 @@ class KongInstallerTest(KongTest):
         hostname = "*.example.com"
 
         # WHEN deploy certificate to hostname
-        self.configurator.deploy_certs(
+        self.configurator.deploy_cert(
             hostname, 
             self.cert_path, 
             self.key_path, 
@@ -143,8 +143,8 @@ class KongInstallerTest(KongTest):
         # THEN api call made to:
         # 1. create the new cert 
         # 2. SNIs associated to cert:
-        #   a. update a001.example.com, a002.example.com, a006.example.com
-        #   b. create a004.example.com
+        #  a. update SNIs a001.example.com, a002.example.com, a006.example.com
+        #  b. create SNI a004.example.com
         # 3. cert for a004.example.com deleted as no longer referenced
         calls = request_info.mock_calls
         requests = self._get_write_requests(calls)
@@ -202,7 +202,47 @@ class KongInstallerTest(KongTest):
             ]
         )
 
+    @mock.patch('certbot_kong.tests.util.configurator.KongAdminApi.create_sni')
+    @mock.patch('certbot_kong.tests.util.MockKongAdminHandler.request_info')
+    def test_deploy_hostname_undo_changes_after_error(self,
+        request_info,
+        create_sni
+        ):
+        # GIVEN hostname with no existing cert or route
+        hostname = "*.example.com"
+
+        # WHEN deploy certificate to hostname and error encountered creating SNI
+        create_sni.side_effect = api.ApiError("foo")
+        self.configurator.deploy_cert(
+            hostname, 
+            self.cert_path, 
+            self.key_path, 
+            self.chain_path, 
+            self.fullchain_path
+        )   
         
+        # THEN:
+        # 1. error encountered creating sni a004.example.com
+        # 2. UNDO previous operations and assert that the
+        # newly created cert has been deleted
+
+        self.assertRaises(errors.PluginError, self.configurator.save)   
+        calls = request_info.mock_calls
+        requests = self._get_write_requests(calls)
+
+        cert_id = requests[0][1][len("/certificates/"):]
+
+        # assert last request was deleting the newly created cert
+        self.assertEquals(
+            requests[-1],
+            (
+                "DELETE", 
+                "/certificates/"+cert_id,
+                None
+            )
+        )
+
+
     @mock.patch('certbot_kong.tests.util.MockKongAdminHandler.request_info')
     def test_deploy_many_hostnames_certificate(self, request_info): 
         # GIVEN many hostnames 
@@ -210,7 +250,7 @@ class KongInstallerTest(KongTest):
 
         # WHEN deploy
         for hostname in hostnames:
-            self.configurator.deploy_certs(
+            self.configurator.deploy_cert(
                 hostname, 
                 self.cert_path, 
                 self.key_path, 
@@ -307,6 +347,141 @@ class KongInstallerTest(KongTest):
                 ),
             ]
         )
+
+    @mock.patch('certbot_kong.tests.util.MockKongAdminHandler.request_info')
+    def test_deploy_existing_certificate_for_sni(self, request_info):
+        # GIVEN exisiting certificate
+        hostname = "a001.example.com"
+        key_path = os.path.join(THIS_DIR, 
+            "testdata/key_file_reuse.txt")
+        fullchain_path = os.path.join(THIS_DIR, 
+            "testdata/fullchain_file_reuse.txt")
+
+        # WHEN deploy certificate 
+        self.configurator.deploy_cert(
+            hostname, 
+            self.cert_path, 
+            key_path, 
+            self.chain_path, 
+            fullchain_path
+        )
+        self.configurator.save()
+
+        # THEN no new certificate is created and SNIs aren't updated
+        calls = request_info.mock_calls
+        requests = self._get_write_requests(calls)
+
+        self.assertEquals(len(requests),0)
+
+    @mock.patch('certbot_kong.tests.util.MockKongAdminHandler.request_info')
+    def test_rollback(self,
+        request_info
+        ):
+        # GIVEN hostname with no existing cert or route
+        hostname = "*.example.com"
+        self.configurator.deploy_cert(
+            hostname, 
+            self.cert_path, 
+            self.key_path, 
+            self.chain_path, 
+            self.fullchain_path
+        )
+        self.configurator.save()
+      
+        # WHEN rollback
+        self.configurator.rollback_checkpoints()
+        
+        # THEN rollback request api calls made:
+        # 1. recreate cert004 
+        # 2. SNIs associated back to cert:
+        #   a. update a001.example.com, a002.example.com, a006.example.com
+        # 3. delete a004.example.com (didn't previously exist)
+        # 3. delete newly created cert
+        calls = request_info.mock_calls
+        requests = self._get_write_requests(calls)
+
+        cert_id = requests[0][1][len("/certificates/"):]
+        rollback_requests = requests[6:]
+        self.assertCountEqual(
+            rollback_requests, 
+            [
+                (
+                    "PUT", 
+                    "/certificates/cert004",
+                    {
+                        "key": "-----BEGIN PRIVATE KEY-----\n.8."
+                            "\n-----END PRIVATE KEY-----",
+                        "cert": "-----BEGIN CERTIFICATE-----\n.7."
+                            "\n-----END CERTIFICATE-----"
+                    }
+                ),
+                (
+                    "PATCH", 
+                    "/snis/a001.example.com",
+                    {
+                        "name":"a001.example.com",
+                        "certificate": {"id":"cert001"}
+                    }
+                ),
+                (
+                    "PATCH", 
+                    "/snis/a002.example.com",
+                    {
+                        "name":"a002.example.com",
+                        "certificate": {"id":"cert002"}
+                    }
+                ),
+                (
+                    "PATCH", 
+                    "/snis/a006.example.com",
+                    {
+                        "name":"a006.example.com",
+                        "certificate": {"id":"cert004"}
+                    }
+                ),
+                (
+                    "DELETE", 
+                    "/snis/a004.example.com",
+                    None
+                ),
+                (
+                    "DELETE", 
+                    "/certificates/"+cert_id,
+                    None
+                )
+            ]
+        )
+
+        # assert deletion of new cert was the last request
+        self.assertEquals(
+            rollback_requests[-1], 
+           (
+                "DELETE", 
+                "/certificates/"+cert_id,
+                None
+            )
+        )
+
+        # assert recreation of cert004 is before sni a006.example.com update
+        recreation_idx = rollback_requests.index((
+            "PUT", 
+            "/certificates/cert004",
+            {
+                "key": "-----BEGIN PRIVATE KEY-----\n.8.\n-----END PRIVATE KEY-----",
+                "cert": "-----BEGIN CERTIFICATE-----\n.7.\n-----END CERTIFICATE-----"
+            }
+        ))
+
+        sni_update_idx = rollback_requests.index((
+            "PATCH", 
+            "/snis/a006.example.com",
+            {
+                "name":"a006.example.com",
+                "certificate": {"id":"cert004"}
+            }
+        ))
+
+        self.assertTrue(recreation_idx < sni_update_idx)
 
 
     def _get_write_requests(self, calls):

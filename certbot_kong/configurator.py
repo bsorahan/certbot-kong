@@ -1,11 +1,16 @@
 """Kong Configurator Certbot plugins.
 """
 import logging
+import pickle
 
 import zope.interface
 
+import certbot.constants
 from certbot import errors
 from certbot import interfaces
+from certbot import util
+from certbot.compat import misc
+from certbot.compat import os
 from certbot.plugins import common
 
 from certbot_kong.kong_admin_api import KongAdminApi
@@ -206,14 +211,24 @@ class KongConfigurator(common.Installer):
             be quickly reversed in the future (challenges)
         :raises .PluginError: when save is unsuccessful
         """
-        self._config.apply_changes()
-        #self._config.dump_history(filename)
-        #self.add_to_checkpoint([filename], self.save_notes, temporary)
-        #self._config.clear_history()
-        self.save_notes = ""
-        self._config.load_config()
-        if title and not temporary:
-            self.finalize_checkpoint(title)
+        try:
+            self._config.apply_changes()
+            conf_dump_filename = self._get_conf_dump_filename()
+            self._dump_config(conf_dump_filename)
+            self.add_to_checkpoint([conf_dump_filename], self.save_notes, temporary)
+
+            self._config.clear_changes()
+            self.save_notes = ""
+            self._config.load_config()
+            
+            if title and not temporary:
+                self.finalize_checkpoint(title)
+        except:
+            raise errors.PluginError("Unable to save apply chnages")
+        
+
+    def _get_conf_dump_filename(self):
+        return os.path.join(self.config.work_dir,"kong_conf")
 
     def more_info(self):
         """Human-readable string to help understand the module"""
@@ -225,6 +240,13 @@ class KongConfigurator(common.Installer):
         """Revert `rollback` number of configuration checkpoints.
         :raises .PluginError: when configuration cannot be fully reverted
         """
+        super(KongConfigurator, self).rollback_checkpoints(rollback)
+        conf_dump_filename = self._get_conf_dump_filename()
+        self._load_config(conf_dump_filename)
+        self._config.undo_changes()
+        self._config.clear_changes()
+        self.save_notes = ""
+        self._config.load_config()
 
     def recovery_routine(self):  # type: ignore
         """Revert configuration to most recent finalized checkpoint.
@@ -234,20 +256,19 @@ class KongConfigurator(common.Installer):
         :raises .errors.PluginError: If unable to recover the configuration
         """
 
-    def view_config_changes(self):  # type: ignore
-        """Display all of the LE config changes.
-        :raises .PluginError: when config changes cannot be parsed
-        """
+        super(KongConfigurator, self).recovery_routine()
+        conf_dump_filename = self._get_conf_dump_filename()
+        self._load_config(conf_dump_filename)
+        self._config.undo_changes()
+        self._config.clear_changes()
+        self.save_notes = ""
+        self._config.load_config()
 
-    def config_test(self):  # type: ignore
-        """Make sure the configuration is valid.
-        Nothing to do for Kong
-        """
-        pass
-
-    def restart(self):  # type: ignore
-        """Restart or refresh the server content.
-        Nothing to do for Kong (content taskes effect immediatly).
-        """
-        pass
+    def _dump_config(self, filename):
+        with open(filename, 'wb') as f:
+            pickle.dump(self._config, f, pickle.HIGHEST_PROTOCOL)
+    
+    def _load_config(self, filename):
+        with open(filename, 'rb') as f:
+            self._config =  pickle.load(f)
 

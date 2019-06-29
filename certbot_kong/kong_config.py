@@ -29,6 +29,11 @@ class Config(object):
     def certs(self):
         return self._certs
 
+    def clear_changes(self):
+        self._queued_changes = []
+        self._executed_changes = collections.deque()
+
+
     def load_config(self):
         """Retrieves the current kong route and certificate configuration details.
         """
@@ -82,20 +87,28 @@ class Config(object):
 
         else:
             old_cert_id=old_cert['id']
-            # Update SNI with the newly created certificate
-            logger.info("Updating SNI %s certificate from %s to %s"
-                % (sni, old_cert_id, cert_id))
-            self._queue_change(UpdateSniCertificate(sni, cert_id, old_cert_id))
 
-            # update cert snis reference
-            old_cert['snis'].remove(sni)
-            if len(old_cert['snis']) <= 0:
-                # Certificate no longer references any snis and can be deleted
-                del self._certs[old_cert_index]
-                logger.info("Deleting certificate %s as no SNIs are using it"
-                % old_cert_id)
+            if old_cert_id == cert_id:
+                logger.info(("SNI %s already using certificate %s. "
+                    "No action required")
+                    % (sni, cert_id))
+            else:
+                # Update SNI with the newly created certificate
+                logger.info("Updating SNI %s certificate from %s to %s"
+                    % (sni, old_cert_id, cert_id))
                 self._queue_change(
-                    DeleteCertificate(old_cert_id, 
+                    UpdateSniCertificate(sni, cert_id, old_cert_id))
+
+                # update cert snis reference
+                old_cert['snis'].remove(sni)
+                if len(old_cert['snis']) <= 0:
+                    # Certificate no longer references any snis and 
+                    # can be deleted
+                    del self._certs[old_cert_index]
+                    logger.info("Deleting certificate %s "
+                        "as no SNIs are using it"
+                        % old_cert_id)
+                    self._queue_change(DeleteCertificate(old_cert_id, 
                         CertificateData(old_cert['cert'],old_cert['key'])))
         
         # Update cert with reference to sni
@@ -103,7 +116,8 @@ class Config(object):
         cert['snis'] = list(set(cert['snis']))
 
     def _get_cert(self, fullchain_str, key_str):
-        """helper function to find the certificate matching the fullchain and key
+        """helper function to find the certificate matching the 
+        fullchain and key
         """
         for c in self._certs:
             if(fullchain_str == c['cert'] and key_str == c['key']):
@@ -138,9 +152,32 @@ class Config(object):
         Iterate through the changes and execute() each of them
         """
         for change in self._queued_changes:
-            change.execute(self._api)
+            try:
+                change.execute(self._api)
+                self._executed_changes.append(change)
+            except:
+                # revert changes
+                self.undo_changes()
+                raise 
+        self._queued_changes=[]
+
+    def undo_changes(self):
+        """ undo changes
+        """
+        while self._executed_changes:
+            change = self._executed_changes.pop()
+
+            try:
+                change.undo(self._api)
+            except:
+                UndoChangesError(
+                    change, 
+                    self._executed_changes, 
+                    "Unable to undo changes."
+                    " Configuration may be in an inconsitant state")
+            
         
-        self._queued_changes = []
+
 
 class Change(object):
     """Change interface"""
@@ -324,3 +361,13 @@ class CertificateData(object):
         self.snis = snis
 
 
+class UndoChangesError(Exception):
+    """ Rasied when an error is encountered while undoing changes"""
+    def __init__(self, failed_change, remaining_changes, message):
+        self.failed_change = failed_change
+        self.remaining_changes = remaining_changes
+        self.message = message
+
+class ApplyChangesError(Exception):
+    """Raised when an error occurs while applying changes"""
+    pass
