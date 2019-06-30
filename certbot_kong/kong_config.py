@@ -43,7 +43,8 @@ class Config(object):
         self._certs = self._api.list_certificates()
         self._routes = self._api.list_routes()
 
-    def set_sni_cert(self, sni, fullchain_str, key_str):
+    def set_sni_cert(self, sni, fullchain_str, key_str, 
+            delete_unused_certs=True):
         """Sets a SNI with a certificate.
 
         If the SNI does not exist then it will be created.
@@ -100,8 +101,9 @@ class Config(object):
                     UpdateSniCertificate(sni, cert_id, old_cert_id))
 
                 # update cert snis reference
-                old_cert['snis'].remove(sni)
-                if len(old_cert['snis']) <= 0:
+                old_snis = old_cert.get('snis',[])
+                old_snis.remove(sni)
+                if len(old_snis) <= 0 and delete_unused_certs:
                     # Certificate no longer references any snis and 
                     # can be deleted
                     del self._certs[old_cert_index]
@@ -109,18 +111,20 @@ class Config(object):
                         "as no SNIs are using it"
                         % old_cert_id)
                     self._queue_change(DeleteCertificate(old_cert_id, 
-                        CertificateData(old_cert['cert'],old_cert['key'])))
+                        CertificateData(
+                            old_cert.get('cert'),old_cert.get('key'))))
         
         # Update cert with reference to sni
-        cert['snis'].append(sni)
-        cert['snis'] = list(set(cert['snis']))
+        snis = cert.get('snis',[])
+        snis.append(sni)
+        cert['snis'] = list(set(snis))
 
     def _get_cert(self, fullchain_str, key_str):
         """helper function to find the certificate matching the 
         fullchain and key
         """
         for c in self._certs:
-            if(fullchain_str == c['cert'] and key_str == c['key']):
+            if(fullchain_str == c.get('cert') and key_str == c.get('key')):
                 return c
         return None
 
@@ -129,10 +133,31 @@ class Config(object):
         """
         i=0
         for c in self._certs:
-            if sni in c['snis']:
+            if sni in c.get('snis',[]):
                 return c, i
             i += 1
         return None, -1
+
+    def redirect_route(self, route_id):
+        route = self._get_route(route_id)
+
+        if not route:
+            raise ConfigError("Unable to redirect route for %s "
+            "as there is no matching route" % route_id)
+
+        old_protocols = route.get('protocols',[])
+        redirect_protocols = ['https']
+        logger.info("Updating Route %s protocols from %s to %s"
+            % (route_id, str(old_protocols), str(redirect_protocols)))
+        self._queue_change(UpdateRouteProtocols(route_id, 
+            redirect_protocols, old_protocols))
+        route['protocols'] = redirect_protocols
+
+    def _get_route(self, route_id):
+        for r in self._routes:
+            if r['id']==route_id:
+                return r
+        return None
 
             
     def get_changes_details(self):
@@ -188,9 +213,6 @@ class Change(object):
     
     def undo(self, api #type: api
             ):
-        raise NotImplementedError
-
-    def serialize(self):
         raise NotImplementedError
 
     def get_details(self):

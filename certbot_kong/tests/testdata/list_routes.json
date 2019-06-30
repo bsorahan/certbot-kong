@@ -19,7 +19,7 @@
             "destinations": null,
             "strip_path": true,
             "protocols": [
-                "https"
+                "http"
             ],
             "tags": null
         },
@@ -43,7 +43,28 @@
             "destinations": null,
             "strip_path": true,
             "protocols": [
-                "https"
+                "http"
+            ],
+            "tags": null
+        },
+        {
+            "methods": null,
+            "created_at": 1559903321,
+            "id": "route003",
+            "snis": null,
+            "paths":["/abc"],
+            "name": null,
+            "sources": null,
+            "preserve_host": false,
+            "regex_priority": 0,
+            "service": {
+                "id": "a9749564-1e9d-4f86-af96-4f92f080d3b7"
+            },
+            "updated_at": 1559903321,
+            "destinations": null,
+            "strip_path": true,
+            "protocols": [
+                "http", "https"
             ],
             "tags": null
         }

@@ -77,6 +77,72 @@ class KongInstallerTest(KongTest):
         )
 
     @mock.patch('certbot_kong.tests.util.MockKongAdminHandler.request_info')
+    def test_deploy_cert_old_cert_not_deleted(self, 
+            request_info #type: Mock
+        ):
+        # GIVEN hostname with existing cert with only this SNI
+        hostname = "a006.example.com"
+
+        # WHEN deploy certificate to hostname and 
+        # "delete-unused-certificates" is set to False
+        setattr(self.configurator.config, 
+            self.configurator.dest("delete-unused-certificates"), False)
+        self.configurator.deploy_cert(
+            hostname, 
+            self.cert_path, 
+            self.key_path, 
+            self.chain_path, 
+            self.fullchain_path
+        )
+        self.configurator.save()
+        
+
+        # THEN no api called made to delete cert004
+        calls = request_info.mock_calls
+        requests = self._get_write_requests(calls)
+
+        self.assertTrue( 
+            (
+                "DELETE", 
+                "/certificates/cert004",
+                None
+            ) not in requests
+        )
+
+    @mock.patch('certbot_kong.tests.util.MockKongAdminHandler.request_info')
+    def test_deploy_cert_old_cert_deleted(self, 
+            request_info #type: Mock
+        ):
+        # GIVEN hostname with existing cert with only this SNI
+        hostname = "a006.example.com"
+
+        # WHEN deploy certificate to hostname and 
+        # "delete-unused-certificates" is set to True
+        setattr(self.configurator.config, 
+            self.configurator.dest("delete-unused-certificates"), True)
+        self.configurator.deploy_cert(
+            hostname, 
+            self.cert_path, 
+            self.key_path, 
+            self.chain_path, 
+            self.fullchain_path
+        )
+        self.configurator.save()
+        
+
+        # THEN api called made to delete cert004
+        calls = request_info.mock_calls
+        requests = self._get_write_requests(calls)
+
+        self.assertTrue( 
+            (
+                "DELETE", 
+                "/certificates/cert004",
+                None
+            ) in requests
+        )
+
+    @mock.patch('certbot_kong.tests.util.MockKongAdminHandler.request_info')
     def test_deploy_hostname_certificate_update(self, request_info):
         # GIVEN hostname which has a an existing certificate
         hostname = "a002.example.com"
@@ -121,7 +187,145 @@ class KongInstallerTest(KongTest):
             ]
         )
 
+    @mock.patch('certbot_kong.tests.util.MockKongAdminHandler.request_info')
+    def test_redirect_route_with_no_hosts(self, request_info):
+        # GIVEN a route with HTTP which has no hosts
+        domain = "nomatch.example.com"
 
+        # WHEN redirect for a hostname
+        self.configurator.enhance(
+            domain,
+            'redirect'
+        )
+
+        # THEN api call made to update route003 protocols to HTTPS:
+        calls = request_info.mock_calls
+        requests = self._get_write_requests(calls)
+
+        self.assertTrue(len(requests) == 1)
+        self.assertEquals(
+            requests[0], 
+            (
+                "PATCH", 
+                "/routes/route003",
+                {"protocols":["https"]}
+            )
+        )
+    
+    @mock.patch('certbot_kong.tests.util.MockKongAdminHandler.request_info')
+    def test_no_redirect_route_with_no_hosts(self, request_info):
+        # GIVEN a route with HTTP which has no hosts
+        domain = "nomatch.example.com"
+
+        # WHEN redirect for a hostname and 
+        # 'redirect-route-no-host' set to False
+        setattr(self.configurator.config, 
+            self.configurator.dest("redirect-route-no-host"), False)
+        self.configurator.enhance(
+            domain,
+            'redirect'
+        )
+
+        # THEN no api call made to update route003 protocols to HTTPS:
+        calls = request_info.mock_calls
+        requests = self._get_write_requests(calls)
+
+        self.assertTrue(len(requests) == 0)
+
+    @mock.patch('certbot_kong.tests.util.MockKongAdminHandler.request_info')
+    def test_redirect_route_matching_domain(self, request_info):
+        # GIVEN a route with HTTP which has 
+        # matching host (route002) and no hosts (route003)
+        domain = "a002.example.com"
+
+        # WHEN redirect for a hostname
+        self.configurator.enhance(
+            domain,
+            'redirect'
+        )
+
+        # THEN api call made to update route002 and route003 
+        # protocols to HTTPS:
+        calls = request_info.mock_calls
+        requests = self._get_write_requests(calls)
+
+        self.assertCountEqual(
+            requests,
+            [ 
+                (
+                    "PATCH", 
+                    "/routes/route003",
+                    {"protocols":["https"]}
+                ),
+                (
+                    "PATCH", 
+                    "/routes/route002",
+                    {"protocols":["https"]}
+                )
+            ])
+
+    @mock.patch('certbot_kong.tests.util.MockKongAdminHandler.request_info')
+    def test_redirect_route_matching_wildcard_domain(self, request_info):
+        # GIVEN a route with HTTP which has 
+        # matching host (route001, route002) and no hosts (route003)
+        domain = "*.example.com"
+
+        # WHEN redirect for domain
+        self.configurator.enhance(
+            domain,
+            'redirect'
+        )
+
+        # THEN api call made to update route002 and route003 
+        # protocols to HTTPS:
+        calls = request_info.mock_calls
+        requests = self._get_write_requests(calls)
+
+        self.assertCountEqual(
+            requests,
+            [ 
+                (
+                    "PATCH", 
+                    "/routes/route001",
+                    {"protocols":["https"]}
+                ),
+                (
+                    "PATCH", 
+                    "/routes/route002",
+                    {"protocols":["https"]}
+                ),
+                (
+                    "PATCH", 
+                    "/routes/route003",
+                    {"protocols":["https"]}
+                )
+            ]
+        )
+    
+    @mock.patch('certbot_kong.tests.util.MockKongAdminHandler.request_info')
+    def test_no_redirect_route_domain_matching_some(self, request_info):
+        # GIVEN a route (route002) with HTTP 
+        # which has only SOME matching hosts 
+
+        domain = "a002.example.com"
+
+        # WHEN redirect for domain and 'redirect-route-any-host' and 
+        # 'redirect-route-no-host' are set to False
+        setattr(self.configurator.config, 
+            self.configurator.dest("redirect-route-no-host"), False)
+        setattr(self.configurator.config, 
+            self.configurator.dest("redirect-route-any-host"), False)
+        self.configurator.enhance(
+            domain,
+            'redirect'
+        )
+
+        # THEN no api call made
+        calls = request_info.mock_calls
+        requests = self._get_write_requests(calls)
+
+        self.assertTrue(len(requests) == 0)
+           
     @mock.patch('certbot_kong.tests.util.MockKongAdminHandler.request_info')
     def test_deploy_wildcard_hostname_certificate(self,
         request_info

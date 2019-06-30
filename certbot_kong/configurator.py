@@ -24,7 +24,6 @@ logger = logging.getLogger(__name__)
 class KongConfigurator(common.Installer):
     """Kong Configurator.
     .. todo:: Add interfaces.IAuthenticator functionality
-    .. todo:: Add enhancements (HTTP redirect for sure)
     :ivar str save_notes: Human-readable config change notes
     """
 
@@ -34,6 +33,14 @@ class KongConfigurator(common.Installer):
     def add_parser_arguments(cls, add):
         add("admin-url", default=constants.CLI_DEFAULTS["admin_url"],
             help="kong admin URL.")
+        add("delete-unused-certificates", default=True,
+            help="Delete certificates when it no longer references any SNIs")   
+        add("redirect-route-no-host", default=True,
+            help="Include redirect HTTP to HTTPS for routes which do not "
+            "specify any hosts")
+        add("redirect-route-any-host", default=True,
+            help="Include redirect HTTP to HTTPS for routes which has at "
+            "least one host which matches the domain")
 
     def __init__(self, *args, **kwargs):
         # TODO add enable redirect enhancement. 
@@ -41,7 +48,7 @@ class KongConfigurator(common.Installer):
         # i.e. no HTTP 
         #self._enhance_func = {"redirect": self._enable_redirect}
         super(KongConfigurator, self).__init__(*args, **kwargs)
-        self._enhance_func = {}
+        self._enhance_func = {"redirect": self._enable_redirect}
         
         self.save_notes = ""
 
@@ -54,6 +61,47 @@ class KongConfigurator(common.Installer):
 
         self._config = Config(self._api)
 
+    def _enable_redirect(self, domain, unused_options):
+        """Redirect HTTP traffic to HTTPS for routes matching domain.
+        .. note:: This function saves the configuration
+        :param str domain: domain to enable redirect for
+        :param unused_options: Not currently used
+        :type unused_options: Not Available
+        """
+
+        for route in self._config.routes:
+            hosts = route.get('hosts',[])
+            protocols = route.get('protocols',[])
+
+            if 'http' not in protocols:
+                # route already redircting
+                continue 
+            
+            if hosts:
+                if(self._is_wildcard_domain(domain)):
+                    matched_hosts = self._determine_matched_domains(
+                        domain, hosts)
+                    
+                    if(len(matched_hosts)>0):
+                        if(len(matched_hosts) == len(hosts) or
+                                self.conf('redirect-route-any-host')):
+                            self._config.redirect_route(route['id'])
+                else:
+                    if(
+                        (len(hosts) == 1 and domain == hosts[0]) or
+                        (
+                            self.conf('redirect-route-any-host') and 
+                            domain in hosts
+                        )
+                    ):
+                        self._config.redirect_route(route['id'])
+            else:
+                if self.conf('redirect-route-no-host'):
+                    self._config.redirect_route(route['id'])
+
+        
+        self.save()
+
     def get_all_names(self):  # type: ignore
         """Returns all names found in the Kong Configuration.
         :returns: all the hosts from all the routes and all the snis from certificates
@@ -62,12 +110,12 @@ class KongConfigurator(common.Installer):
         all_names = set()  # type: Set[str]
 
         for c in self._config.certs:
-            snis = c['snis']
+            snis = c.get('snis', [])
             for sni in snis:
                 all_names.add(sni)
 
         for r in self._config.routes:
-            hosts = r['hosts']
+            hosts = r.get('hosts', [])
             for host in hosts:
                 all_names.add(host)
 
@@ -112,7 +160,8 @@ class KongConfigurator(common.Installer):
             raise errors.PluginError('Unable to open cert files.')
 
         for d in domains:
-            self._config.set_sni_cert(d, fullchain_str, key_str)
+            self._config.set_sni_cert(d, fullchain_str, key_str, 
+                self.conf('delete-unused-certificates'))
             self.save_notes = "\n".join(self._config.get_changes_details())
 
     def _is_wildcard_domain(self, domain):
@@ -132,11 +181,15 @@ class KongConfigurator(common.Installer):
         """
         domains = set()
         for r in self._config.routes:
-            domains.update(r['hosts'])
+            domains.update(r.get('hosts',[]))
         
         for c in self._config.certs:
-            domains.update(c['snis'])
+            domains.update(c.get('snis',[]))
 
+        return self._determine_matched_domains(wildcard_domain, 
+            list(domains))
+
+    def _determine_matched_domains(self, wildcard_domain, domains):
         matched_domains = []
         for d in domains:
             if self._matched_domain(d, wildcard_domain):
@@ -194,7 +247,7 @@ class KongConfigurator(common.Installer):
             :const:`~certbot.constants.ENHANCEMENTS`
         :rtype: :class:`collections.Iterable` of :class:`str`
         """
-        return []
+        return self._enhance_func.keys()
 
     def save(self, title=None, temporary=False):
         """Saves all changes to the configuration files.
@@ -212,6 +265,7 @@ class KongConfigurator(common.Installer):
         :raises .PluginError: when save is unsuccessful
         """
         try:
+            self.save_notes = "\n".join(self._config.get_changes_details())
             self._config.apply_changes()
             conf_dump_filename = self._get_conf_dump_filename()
             self._dump_config(conf_dump_filename)
@@ -224,7 +278,7 @@ class KongConfigurator(common.Installer):
             if title and not temporary:
                 self.finalize_checkpoint(title)
         except:
-            raise errors.PluginError("Unable to save apply chnages")
+            raise errors.PluginError("Unable to apply changes")
         
 
     def _get_conf_dump_filename(self):

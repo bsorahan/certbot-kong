@@ -134,7 +134,7 @@ class KongAdminApi():
                 "protocols" : protocols
             }
         data={k: v for k, v in data.items() if v is not None}
-        r=requests.patch(self.url+"/route/"+route_id, json=data)
+        r=requests.patch(self.url+"/routes/"+route_id, json=data)
 
         if r.status_code != 200:
             raise ApiError('Unable to update route: '

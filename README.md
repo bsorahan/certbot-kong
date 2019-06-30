@@ -26,7 +26,7 @@ To install certificates managed in certbot to Kong:
 KONG_ADMIN_URL=http://localhost:8001
 certbot install -i certbot-kong:kong --certbot-kong:kong-admin-url $KONG_ADMIN_URL
 ```
-Set KONG_ADMIN_URL as required for your environment.
+Set `KONG_ADMIN_URL` as required for your environment.
 
 On confirmation of the certificate to install the certbot-kong installer plugin will:
 1. Create certificate object for the certificate to be installed
