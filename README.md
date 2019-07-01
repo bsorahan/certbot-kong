@@ -34,3 +34,11 @@ On confirmation of the certificate to install the certbot-kong installer plugin 
 3. Delete certifciates which no longer have any SNIs
 
 *Note: To use the installer there needs to be certificates already managed by certbot. These can be obtained as per https://certbot.eff.org/docs/using.html#getting-certificates-and-choosing-plugins.*
+
+## Advanced Usage 
+Refer to certbot documentation for usage of certbot https://certbot.eff.org/docs/using.html.
+
+For certbot-kong plugin configuration options run:
+```
+certbot --help certbot-kong:kong
+```

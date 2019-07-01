@@ -7,11 +7,11 @@ import certbot_kong.kong_admin_api as api
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-class ConfigError(Exception):
+class KongChangeInvokerError(Exception):
     """Exception when there is a kong config error"""
     pass
 
-class Config(object):
+class KongChangeInvoker(object):
 
     def __init__(self, 
             api #type: api
@@ -38,7 +38,7 @@ class Config(object):
         """Retrieves the current kong route and certificate configuration details.
         """
         if len(self._queued_changes) > 0:
-            raise ConfigError(
+            raise KongChangeInvokerError(
                 'Unable to load config while changes are queued') 
         self._certs = self._api.list_certificates()
         self._routes = self._api.list_routes()
@@ -142,7 +142,7 @@ class Config(object):
         route = self._get_route(route_id)
 
         if not route:
-            raise ConfigError("Unable to redirect route for %s "
+            raise KongChangeInvokerError("Unable to redirect route for %s "
             "as there is no matching route" % route_id)
 
         old_protocols = route.get('protocols',[])
@@ -153,6 +153,45 @@ class Config(object):
             redirect_protocols, old_protocols))
         route['protocols'] = redirect_protocols
 
+    def create_http01_challenge_service(self, 
+            domain, validation, validation_path):
+        service_id = str(uuid.uuid4())
+        plugin_id = str(uuid.uuid4())
+        route_id = str(uuid.uuid4())
+        logger.info("Adding http01 challenge service %s "
+            "(with request-termination plugin %s and route %s)" 
+                % (service_id,plugin_id,route_id)) 
+        self._queue_change(
+                CreateService(service_id, 
+                    {
+                        "name" : "certbot-kong TEMPORARY ACME challenge",
+                        "url":"http://invalid.example.com"
+                    }
+                ))
+        self._queue_change(
+                CreatePlugin(plugin_id, 
+                    {
+                        "service":{"id":service_id},
+                        "name":"request-termination",
+                        "config":{
+                            "status_code":200,
+                            "content_type":"text/plain",
+                            "body":validation
+                        }
+                    }
+                ))
+        
+        self._queue_change(
+                CreateRoute(route_id, 
+                    {
+                        "service":{"id":service_id},
+                        "paths":[validation_path],
+                        "hosts":[domain],
+                        "protocols":["http"]
+                    }
+                ))
+            
+            
     def _get_route(self, route_id):
         for r in self._routes:
             if r['id']==route_id:
@@ -375,6 +414,67 @@ class CreateSni(Change):
 
     def get_details(self):
         return "Add SNI %s" % self._sni
+
+class CreateService(Change):
+    """Change to create a service."""
+    def __init__(self, 
+            service_id, # type str
+            data #type Dict
+            ):
+        self._service_id = service_id
+        self._data = data
+
+    def execute(self, api):
+        api.update_or_create_service(self._service_id, self._data)
+    
+    def undo(self, api):
+       api.delete_service(
+            self._service_id
+        )
+
+    def get_details(self):
+        return "Add Service %s" % self._service_id
+
+class CreatePlugin(Change):
+    """Change to create a plugin."""
+    def __init__(self, 
+            plugin_id, # type str
+            data #type Dict
+            ):
+        self._plugin_id = plugin_id
+        self._data = data
+
+    def execute(self, api):
+        api.update_or_create_plugin(self._plugin_id, self._data)
+    
+    def undo(self, api):
+       api.delete_plugin(
+            self._plugin_id
+        )
+
+    def get_details(self):
+        return "Add Plugin %s" % self._plugin_id
+
+
+class CreateRoute(Change):
+    """Change to create a route."""
+    def __init__(self, 
+            route_id, # type str
+            data #type Dict
+            ):
+        self._route_id = route_id
+        self._data = data
+
+    def execute(self, api):
+        api.update_or_create_route(self._route_id, self._data)
+    
+    def undo(self, api):
+       api.delete_route(
+            self._route_id
+        )
+
+    def get_details(self):
+        return "Add Route %s" % self._route_id
 
 class CertificateData(object):
     def __init__(self, cert, key, snis=None):

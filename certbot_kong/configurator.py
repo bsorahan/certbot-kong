@@ -5,6 +5,8 @@ import pickle
 
 import zope.interface
 
+from acme import challenges
+
 import certbot.constants
 from certbot import errors
 from certbot import interfaces
@@ -14,12 +16,13 @@ from certbot.compat import os
 from certbot.plugins import common
 
 from certbot_kong.kong_admin_api import KongAdminApi
-from certbot_kong.kong_config import Config
+from certbot_kong.change_invoker import KongChangeInvoker
 from certbot_kong import constants
+from certbot_kong import http_01
 
 logger = logging.getLogger(__name__)
 
-@zope.interface.implementer(interfaces.IInstaller)
+@zope.interface.implementer(interfaces.IAuthenticator, interfaces.IInstaller)
 @zope.interface.provider(interfaces.IPluginFactory)
 class KongConfigurator(common.Installer):
     """Kong Configurator.
@@ -28,6 +31,10 @@ class KongConfigurator(common.Installer):
     """
 
     description = "Kong Configurator"
+
+    @property
+    def invoker(self):
+        return self._invoker
 
     @classmethod
     def add_parser_arguments(cls, add):
@@ -50,6 +57,9 @@ class KongConfigurator(common.Installer):
         super(KongConfigurator, self).__init__(*args, **kwargs)
         self._enhance_func = {"redirect": self._enable_redirect}
         
+        # Add number of outstanding challenges
+        self._chall_out = 0
+
         self.save_notes = ""
 
     def prepare(self):
@@ -59,7 +69,7 @@ class KongConfigurator(common.Installer):
         self._api = KongAdminApi(
             url=self.conf('admin-url'))
 
-        self._config = Config(self._api)
+        self._invoker = KongChangeInvoker(self._api)
 
     def _enable_redirect(self, domain, unused_options):
         """Redirect HTTP traffic to HTTPS for routes matching domain.
@@ -69,7 +79,7 @@ class KongConfigurator(common.Installer):
         :type unused_options: Not Available
         """
 
-        for route in self._config.routes:
+        for route in self._invoker.routes:
             hosts = route.get('hosts',[])
             protocols = route.get('protocols',[])
 
@@ -85,7 +95,7 @@ class KongConfigurator(common.Installer):
                     if(len(matched_hosts)>0):
                         if(len(matched_hosts) == len(hosts) or
                                 self.conf('redirect-route-any-host')):
-                            self._config.redirect_route(route['id'])
+                            self._invoker.redirect_route(route['id'])
                 else:
                     if(
                         (len(hosts) == 1 and domain == hosts[0]) or
@@ -94,10 +104,10 @@ class KongConfigurator(common.Installer):
                             domain in hosts
                         )
                     ):
-                        self._config.redirect_route(route['id'])
+                        self._invoker.redirect_route(route['id'])
             else:
                 if self.conf('redirect-route-no-host'):
-                    self._config.redirect_route(route['id'])
+                    self._invoker.redirect_route(route['id'])
 
         
         self.save()
@@ -109,12 +119,12 @@ class KongConfigurator(common.Installer):
         """
         all_names = set()  # type: Set[str]
 
-        for c in self._config.certs:
+        for c in self._invoker.certs:
             snis = c.get('snis', [])
             for sni in snis:
                 all_names.add(sni)
 
-        for r in self._config.routes:
+        for r in self._invoker.routes:
             hosts = r.get('hosts', [])
             for host in hosts:
                 all_names.add(host)
@@ -160,9 +170,9 @@ class KongConfigurator(common.Installer):
             raise errors.PluginError('Unable to open cert files.')
 
         for d in domains:
-            self._config.set_sni_cert(d, fullchain_str, key_str, 
+            self._invoker.set_sni_cert(d, fullchain_str, key_str, 
                 self.conf('delete-unused-certificates'))
-            self.save_notes = "\n".join(self._config.get_changes_details())
+            self.save_notes = "\n".join(self._invoker.get_changes_details())
 
     def _is_wildcard_domain(self, domain):
         """ helper method to determine whether a domain is wildcard domain.
@@ -180,10 +190,10 @@ class KongConfigurator(common.Installer):
         """ helper method to find all route hosts matching a wildcard domain.
         """
         domains = set()
-        for r in self._config.routes:
+        for r in self._invoker.routes:
             domains.update(r.get('hosts',[]))
         
-        for c in self._config.certs:
+        for c in self._invoker.certs:
             domains.update(c.get('snis',[]))
 
         return self._determine_matched_domains(wildcard_domain, 
@@ -265,15 +275,15 @@ class KongConfigurator(common.Installer):
         :raises .PluginError: when save is unsuccessful
         """
         try:
-            self.save_notes = "\n".join(self._config.get_changes_details())
-            self._config.apply_changes()
+            self.save_notes = "\n".join(self._invoker.get_changes_details())
+            self._invoker.apply_changes()
             conf_dump_filename = self._get_conf_dump_filename()
             self._dump_config(conf_dump_filename)
             self.add_to_checkpoint([conf_dump_filename], self.save_notes, temporary)
 
-            self._config.clear_changes()
+            self._invoker.clear_changes()
             self.save_notes = ""
-            self._config.load_config()
+            self._invoker.load_config()
             
             if title and not temporary:
                 self.finalize_checkpoint(title)
@@ -297,10 +307,10 @@ class KongConfigurator(common.Installer):
         super(KongConfigurator, self).rollback_checkpoints(rollback)
         conf_dump_filename = self._get_conf_dump_filename()
         self._load_config(conf_dump_filename)
-        self._config.undo_changes()
-        self._config.clear_changes()
+        self._invoker.undo_changes()
+        self._invoker.clear_changes()
         self.save_notes = ""
-        self._config.load_config()
+        self._invoker.load_config()
 
     def recovery_routine(self):  # type: ignore
         """Revert configuration to most recent finalized checkpoint.
@@ -313,10 +323,21 @@ class KongConfigurator(common.Installer):
         super(KongConfigurator, self).recovery_routine()
         conf_dump_filename = self._get_conf_dump_filename()
         self._load_config(conf_dump_filename)
-        self._config.undo_changes()
-        self._config.clear_changes()
+        self._invoker.undo_changes()
+        self._invoker.clear_changes()
         self.save_notes = ""
-        self._config.load_config()
+        self._invoker.load_config()
+
+    def revert_temporary_config(self):
+        """Reload users original configuration files after a temporary save.
+        """
+        super(KongConfigurator, self).revert_temporary_config()
+        conf_dump_filename = self._get_conf_dump_filename()
+        self._load_config(conf_dump_filename)
+        self._invoker.undo_changes()
+        self._invoker.clear_changes()
+        self.save_notes = ""
+        self._invoker.load_config()
 
     def config_test(self):
         """Not required for Kong. Config is always valid"""
@@ -328,9 +349,49 @@ class KongConfigurator(common.Installer):
 
     def _dump_config(self, filename):
         with open(filename, 'wb') as f:
-            pickle.dump(self._config, f, pickle.HIGHEST_PROTOCOL)
+            pickle.dump(self._invoker, f, pickle.HIGHEST_PROTOCOL)
     
     def _load_config(self, filename):
         with open(filename, 'rb') as f:
-            self._config =  pickle.load(f)
+            self._invoker =  pickle.load(f)
+    
+    ### Authenticator
+    def get_chall_pref(self, unused_domain):  # pylint: disable=no-self-use
+        """Return list of challenge preferences."""
+        return [challenges.HTTP01]
+
+    def perform(self, achalls):
+        """Perform the configuration related challenge.
+        This function currently assumes all challenges will be fulfilled.
+        If this turns out not to be the case in the future. Cleanup and
+        outstanding challenges will have to be designed better.
+        """
+        self._chall_out += len(achalls)
+        responses = [None] * len(achalls)
+        http_doer = http_01.KongHttp01(self)
+
+        for i, achall in enumerate(achalls):
+            # Currently also have chall_doer hold associated index of the
+            # challenge. This helps to put all of the responses back together
+            # when they are all complete.
+            http_doer.add_chall(achall, i)
+
+        http_response = http_doer.perform()
+
+        # Go through all of the challenges and assign them to the proper place
+        # in the responses return value. All responses must be in the same order
+        # as the original challenges.
+        for i, resp in enumerate(http_response):
+            responses[http_doer.indices[i]] = resp
+
+        return responses
+
+    # called after challenges are performed
+    def cleanup(self, achalls):
+        """Revert all challenges."""
+        self._chall_out -= len(achalls)
+
+        # If all of the challenges have been finished, clean up everything
+        if self._chall_out <= 0:
+            self.revert_temporary_config()
 

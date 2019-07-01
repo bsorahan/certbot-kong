@@ -34,7 +34,6 @@ class KongTest(unittest.TestCase):  # pylint: disable=too-few-public-methods
         self.server = MockHttpServer(handler=MockKongAdminHandler)
         self.server.start()
 
-
         self.configurator = get_kong_configurator(self.server.url, self.config_path,
                                               self.config_dir, self.work_dir)
 

@@ -141,3 +141,61 @@ class KongAdminApi():
                 'status code: {}, error: {}, request url: {}'
                 .format(r.status_code, r.content, r.request.url))
         return r.json()
+
+    def update_or_create_plugin(self, plugin_id, data):
+        data={k: v for k, v in data.items() if v is not None}
+        r=requests.put(self.url+"/plugins/"+plugin_id, json=data)
+
+        if r.status_code not in [200, 201]:
+            raise ApiError('Unable to update or create plugin: '
+                'status code: {}, error: {}, request url: {}'
+                .format(r.status_code, r.content, r.request.url))
+        return r.json()
+
+    def delete_plugin(self, plugin_id):
+        r=requests.delete(self.url+"/plugins/"+plugin_id)
+
+        if r.status_code != 204:
+            raise ApiError('Unable to delete plugin: '
+                'status code: {}, error: {}, request url: {}'
+                .format(r.status_code, r.content, r.request.url))
+        return
+
+    def update_or_create_service(self, service_id, data):
+        data={k: v for k, v in data.items() if v is not None}
+        r=requests.put(self.url+"/services/"+service_id, json=data)
+
+        if r.status_code not in [200, 201]:
+            raise ApiError('Unable to update or create service: '
+                'status code: {}, error: {}, request url: {}'
+                .format(r.status_code, r.content, r.request.url))
+        return r.json()
+
+    def delete_service(self, service_id):
+        r=requests.delete(self.url+"/services/"+service_id)
+
+        if r.status_code != 204:
+            raise ApiError('Unable to delete service: '
+                'status code: {}, error: {}, request url: {}'
+                .format(r.status_code, r.content, r.request.url))
+        return
+
+    
+    def update_or_create_route(self, route_id, data):
+        data={k: v for k, v in data.items() if v is not None}
+        r=requests.put(self.url+"/routes/"+route_id, json=data)
+
+        if r.status_code not in [200, 201]:
+            raise ApiError('Unable to update or create route: '
+                'status code: {}, error: {}, request url: {}'
+                .format(r.status_code, r.content, r.request.url))
+        return r.json()
+
+    def delete_route(self, route_id):
+        r=requests.delete(self.url+"/routes/"+route_id)
+
+        if r.status_code != 204:
+            raise ApiError('Unable to delete route: '
+                'status code: {}, error: {}, request url: {}'
+                .format(r.status_code, r.content, r.request.url))
+        return

@@ -1,10 +1,17 @@
 import unittest
 import mock
 import json
+import pkg_resources
 
+import josepy as jose
+
+from acme import challenges
+from acme import messages
+
+from certbot import achallenges
 from certbot.compat import os
 from certbot import errors
-
+from certbot.tests import util as test_util
 
 import certbot_kong.kong_admin_api as api
 import certbot_kong.configurator
@@ -687,6 +694,100 @@ class KongInstallerTest(KongTest):
 
         self.assertTrue(recreation_idx < sni_update_idx)
 
+    @mock.patch('certbot_kong.tests.util.MockKongAdminHandler.request_info')
+    def test_perform_and_cleanup(self, request_info):
+        # GIVEN a HTTP authnticator challenge
+        account_key = jose.JWKRSA.load(pkg_resources.resource_string(
+            __name__, os.path.join('testdata', 'rsa512_key.pem')))
+        token = b"m8TdO1qik4JVFtgPPurJmg"
+        domain="example.com"
+        achall = achallenges.KeyAuthorizationAnnotatedChallenge(
+            challb=messages.ChallengeBody(
+                chall=challenges.HTTP01(token=token),
+                uri="https://ca.org/chall1_uri",
+                status=messages.Status("pending"),
+            ), domain=domain, account_key=account_key)
+
+        expected = [
+            achall.response(account_key),
+        ]
+
+        # WHEN the challenge is performed and cleaned up
+        responses = self.configurator.perform([achall])
+        
+        self.configurator.cleanup([achall])
+
+        # THEN a ACME challenge service is created and 
+        # then cleaned up in Kong.
+        calls = request_info.mock_calls
+        requests = self._get_write_requests(calls)
+
+        self.assertEqual(responses, expected)
+
+        acme_service_requests = requests[0:3]
+        cleanup_requests = requests[3:]
+        
+        service_id = requests[0][1][len("/services/"):]
+        plugin_id = requests[1][1][len("/plugins/"):]
+        route_id = requests[2][1][len("/routes/"):]
+
+        self.assertEqual(
+            acme_service_requests, 
+            [
+                (
+                    "PUT", 
+                    "/services/"+service_id,
+                    {
+                        "name" : "certbot-kong TEMPORARY ACME challenge",
+                        "url":"http://invalid.example.com"
+                    }
+                ),
+                (
+                    "PUT", 
+                    "/plugins/"+plugin_id,
+                    {
+                        "service":{"id":service_id},
+                        "name":"request-termination",
+                        "config":{
+                            "status_code":200,
+                            "content_type":"text/plain",
+                            "body":achall.validation(achall.account_key)
+                        }
+                    }
+                ),
+                (
+                    "PUT", 
+                    "/routes/"+route_id,
+                    {
+                        "service":{"id":service_id},
+                        "paths":["/.well-known/acme-challenge/"+achall.chall.encode("token")],
+                        "hosts":[domain],
+                        "protocols":["http"]
+                    }
+                )
+            ]
+        )
+
+        self.assertEqual(
+            cleanup_requests, 
+            [
+                (
+                    "DELETE", 
+                    "/routes/"+route_id,
+                    None
+                ),
+                (
+                    "DELETE", 
+                    "/plugins/"+plugin_id,
+                    None
+                ),
+                (
+                    "DELETE", 
+                    "/services/"+service_id,
+                    None
+                )
+            ]
+        )
 
     def _get_write_requests(self, calls):
         """ Helper function to clean and remove GET requests from calls.
