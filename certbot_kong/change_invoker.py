@@ -164,7 +164,7 @@ class KongChangeInvoker(object):
         self._queue_change(
                 CreateService(service_id, 
                     {
-                        "name" : "certbot-kong TEMPORARY ACME challenge",
+                        "name" : "certbot-kong_TEMPORARY_ACME_challenge",
                         "url":"http://invalid.example.com"
                     }
                 ))
