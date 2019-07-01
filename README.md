@@ -36,7 +36,7 @@ This will configure Kong to respond to http-01 challenges to verify ownership of
 ### Advanced Usage 
 Refer to certbot documentation for usage of certbot https://certbot.eff.org/docs/using.html. As certbot-kong is a plugin for certbot the documentation describes other common usage such as automated certificate renewal.
 
-Certbot-kong has both authenticator and installer plugin components which can be be substituted with other plugins as requried. See https://certbot.eff.org/docs/using.html#combining-plugins.
+Certbot-kong has both authenticator and installer plugin components which can be substituted with other plugins as requried. See https://certbot.eff.org/docs/using.html#combining-plugins.
 
 For certbot-kong plugin configuration options run:
 ```sh
