@@ -8,8 +8,11 @@ setup(
     include_package_data=True,
     install_requires=[
         'mock',
-        'certbot',
         'zope.interface',
+        'certbot',
+        'certbot.compat',
+        'certbot.plugins',
+        'certbot.constants'
     ],
     entry_points={
         'certbot.plugins': [
