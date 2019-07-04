@@ -9,10 +9,7 @@ setup(
     install_requires=[
         'mock',
         'zope.interface',
-        'certbot',
-        'certbot.compat',
-        'certbot.plugins',
-        'certbot.constants'
+        'certbot'
     ],
     entry_points={
         'certbot.plugins': [
