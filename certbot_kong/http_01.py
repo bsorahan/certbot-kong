@@ -3,13 +3,13 @@
 import logging
 
 from acme import challenges
-from acme.magic_typing import List # pylint: disable=unused-import, no-name-in-module
+from acme.magic_typing import List  # pylint: disable=unused-import, no-name-in-module
 
-from certbot import errors
-from certbot.compat import os
+
 from certbot.plugins import common
 
 logger = logging.getLogger(__name__)
+
 
 class KongHttp01(common.ChallengePerformer):
     """HTTP-01 authenticator for Kong
@@ -21,10 +21,6 @@ class KongHttp01(common.ChallengePerformer):
     :ivar indices: Holds the indices of challenges from a larger array
         so the user of the class doesn't have to.
     """
-
-    def __init__(self, configurator):
-        super(KongHttp01, self).__init__(configurator)
-
 
     def perform(self):
         """Perform a challenge on Kong.

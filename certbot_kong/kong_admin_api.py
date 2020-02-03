@@ -1,27 +1,29 @@
-import requests
+""" Module wrapping Kong Admin API REST operations """
 import logging
+import requests
 
-_default_kong_admin_url="http://localhost:8001"
+
+_default_kong_admin_url = "http://localhost:8001"
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
 class ApiError(Exception):
     """Exception for api errors"""
-    pass
 
 class NotFound(Exception):
     """Exception for api errors"""
-    pass
 
 
 class KongAdminApi():
+    """ Kong Admin API wrapper """
 
-    def __init__(self, url = _default_kong_admin_url):
+    def __init__(self, url=_default_kong_admin_url):
         self.url = url
 
     def list_routes(self):
-        r=requests.get(self.url+"/routes")
+        """ list the routes (GET /routes) """
+        r = requests.get(self.url + "/routes")
         if r.status_code != 200:
             raise ApiError('Unable to list routes: '
                 'status code: {}, error: {}, request url: {}'
@@ -29,7 +31,8 @@ class KongAdminApi():
         return r.json()['data']
 
     def list_certificates(self):
-        r=requests.get(self.url+"/certificates")
+        """ list the certificates (GET /certificates) """
+        r = requests.get(self.url + "/certificates")
         if r.status_code != 200:
             raise ApiError('Unable to list certificates: '
                 'status code: {}, error: {}, request url: {}'
@@ -37,30 +40,32 @@ class KongAdminApi():
         return r.json()['data']
 
     def update_certificate(self, certificate_id, cert, key, snis=None):
-        data={  
-                "cert" : cert,
-                "key" : key,
+        """ update the certificate (PATCH /certificates/{cert}) """
+        data = {
+                "cert": cert,
+                "key": key,
                 "snis": snis
             }
-        data={k: v for k, v in data.items() if v is not None}
-        r=requests.patch(self.url+"/certificates/"+certificate_id, json=data)
+        data = {k: v for k, v in data.items() if v is not None}
+        r = requests.patch(self.url+"/certificates/"+certificate_id, json=data)
 
         if r.status_code != 200:
             raise ApiError('Unable to update certificate: '
                 'status code: {}, error: {}, request url: {}'
                 .format(r.status_code, r.content, r.request.url))
         return r.json()
-    
-    def update_or_create_certificate(self, certificate_id, cert, key, 
+
+    def update_or_create_certificate(self, certificate_id, cert, key,
             snis=None
             ):
-        data={  
-                "cert" : cert,
-                "key" : key,
+        """ update or create the certificate (PUT /certificates/{cert}) """
+        data = {
+                "cert": cert,
+                "key": key,
                 "snis": snis
             }
-        data={k: v for k, v in data.items() if v is not None}
-        r=requests.put(self.url+"/certificates/"+certificate_id, json=data)
+        data = {k: v for k, v in data.items() if v is not None}
+        r = requests.put(self.url+"/certificates/"+certificate_id, json=data)
 
         if r.status_code not in [200, 201]:
             raise ApiError('Unable to update or create certificate: '
@@ -69,13 +74,14 @@ class KongAdminApi():
         return r.json()
 
     def add_certificate(self, cert, key, snis):
-        data={  
-                "cert" : cert,
-                "key" : key,
-                "snis" : snis
+        """ create the certificate (POST /certificates/{cert}) """
+        data = {
+                "cert": cert,
+                "key": key,
+                "snis": snis
             }
-        data={k: v for k, v in data.items() if v is not None}
-        r=requests.post(self.url+"/certificates", json=data)
+        data = {k: v for k, v in data.items() if v is not None}
+        r = requests.post(self.url+"/certificates", json=data)
 
         if r.status_code != 201:
             raise ApiError('Unable to add certificate: '
@@ -84,21 +90,22 @@ class KongAdminApi():
         return r.json()
 
     def delete_certificate(self, certificate_id):
-        r=requests.delete(self.url+"/certificates/"+certificate_id)
+        """ delete the certificate (DELETE /certificates/{cert}) """
+        r = requests.delete(self.url+"/certificates/"+certificate_id)
 
         if r.status_code != 204:
             raise ApiError('Unable to delete certificate: '
                 'status code: {}, error: {}, request url: {}'
                 .format(r.status_code, r.content, r.request.url))
-        return
-    
+
     def create_sni(self, sni, certificate_id):
-        data={  
-                "name":sni,
-                "certificate" : {"id":certificate_id}
+        """ create the sni (POST /snis/{sni}) """
+        data = {
+                "name": sni,
+                "certificate": {"id": certificate_id}
             }
-        data={k: v for k, v in data.items() if v is not None}
-        r=requests.post(self.url+"/snis", json=data)
+        data = {k: v for k, v in data.items() if v is not None}
+        r = requests.post(self.url + "/snis", json=data)
 
         if r.status_code != 201:
             raise ApiError('Unable to add sni: '
@@ -107,12 +114,13 @@ class KongAdminApi():
         return r.json()
 
     def update_sni(self, sni, certificate_id):
-        data={  
-                "name":sni,
-                "certificate" : {"id":certificate_id}
+        """ update the sni (PATCH /snis/{sni}) """
+        data = {
+                "name": sni,
+                "certificate": {"id": certificate_id}
             }
-        data={k: v for k, v in data.items() if v is not None}
-        r=requests.patch(self.url+"/snis/"+sni, json=data)
+        data = {k: v for k, v in data.items() if v is not None}
+        r = requests.patch(self.url+"/snis/"+sni, json=data)
 
         if r.status_code != 200:
             raise ApiError('Unable to update sni: '
@@ -121,20 +129,21 @@ class KongAdminApi():
         return r.json()
 
     def delete_sni(self, sni):
-        r=requests.delete(self.url+"/snis/"+sni)
+        """ delete the sni (DELETE /snis/{sni}) """
+        r = requests.delete(self.url+"/snis/"+sni)
 
         if r.status_code != 204:
             raise ApiError('Unable to delete sni: '
                 'status code: {}, error: {}, request url: {}'
                 .format(r.status_code, r.content, r.request.url))
-        return 
 
     def update_route_protocols(self, route_id, protocols):
-        data={  
-                "protocols" : protocols
+        """ delete the route (PATCH /routes/{route}) """
+        data = {
+                "protocols": protocols
             }
-        data={k: v for k, v in data.items() if v is not None}
-        r=requests.patch(self.url+"/routes/"+route_id, json=data)
+        data = {k: v for k, v in data.items() if v is not None}
+        r = requests.patch(self.url+"/routes/"+route_id, json=data)
 
         if r.status_code != 200:
             raise ApiError('Unable to update route: '
@@ -143,8 +152,9 @@ class KongAdminApi():
         return r.json()
 
     def update_or_create_plugin(self, plugin_id, data):
-        data={k: v for k, v in data.items() if v is not None}
-        r=requests.put(self.url+"/plugins/"+plugin_id, json=data)
+        """ update or create the plugin (PUT /plugins/{plugin}) """
+        data = {k: v for k, v in data.items() if v is not None}
+        r = requests.put(self.url+"/plugins/"+plugin_id, json=data)
 
         if r.status_code not in [200, 201]:
             raise ApiError('Unable to update or create plugin: '
@@ -153,17 +163,18 @@ class KongAdminApi():
         return r.json()
 
     def delete_plugin(self, plugin_id):
-        r=requests.delete(self.url+"/plugins/"+plugin_id)
+        """ delete the plugin (DELETE /plugins/{plugin}) """
+        r = requests.delete(self.url+"/plugins/"+plugin_id)
 
         if r.status_code != 204:
             raise ApiError('Unable to delete plugin: '
                 'status code: {}, error: {}, request url: {}'
                 .format(r.status_code, r.content, r.request.url))
-        return
 
     def update_or_create_service(self, service_id, data):
-        data={k: v for k, v in data.items() if v is not None}
-        r=requests.put(self.url+"/services/"+service_id, json=data)
+        """ update or create the service (PUT /services/{service}) """
+        data = {k: v for k, v in data.items() if v is not None}
+        r = requests.put(self.url+"/services/"+service_id, json=data)
 
         if r.status_code not in [200, 201]:
             raise ApiError('Unable to update or create service: '
@@ -172,18 +183,18 @@ class KongAdminApi():
         return r.json()
 
     def delete_service(self, service_id):
-        r=requests.delete(self.url+"/services/"+service_id)
+        """ delete the service (DELETE /services/{service}) """
+        r = requests.delete(self.url+"/services/"+service_id)
 
         if r.status_code != 204:
             raise ApiError('Unable to delete service: '
                 'status code: {}, error: {}, request url: {}'
                 .format(r.status_code, r.content, r.request.url))
-        return
 
-    
     def update_or_create_route(self, route_id, data):
-        data={k: v for k, v in data.items() if v is not None}
-        r=requests.put(self.url+"/routes/"+route_id, json=data)
+        """ update or create the route (PUT /routes/{route}) """
+        data = {k: v for k, v in data.items() if v is not None}
+        r = requests.put(self.url+"/routes/"+route_id, json=data)
 
         if r.status_code not in [200, 201]:
             raise ApiError('Unable to update or create route: '
@@ -192,10 +203,10 @@ class KongAdminApi():
         return r.json()
 
     def delete_route(self, route_id):
-        r=requests.delete(self.url+"/routes/"+route_id)
+        """ delete the route (DELETE /routes/{route}) """
+        r = requests.delete(self.url+"/routes/"+route_id)
 
         if r.status_code != 204:
             raise ApiError('Unable to delete route: '
                 'status code: {}, error: {}, request url: {}'
                 .format(r.status_code, r.content, r.request.url))
-        return

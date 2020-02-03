@@ -1,19 +1,19 @@
+""" Module to invoke changes to the Kong configuration """
 import logging
 import uuid
 import collections
 
-import certbot_kong.kong_admin_api as api
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class KongChangeInvokerError(Exception):
     """Exception when there is a kong config error"""
-    pass
 
 class KongChangeInvoker(object):
+    """ Invoke changes to the Kong configuration """
 
-    def __init__(self, 
+    def __init__(self,
             api #type: api
             ):
         self._api = api
@@ -23,13 +23,16 @@ class KongChangeInvoker(object):
 
     @property
     def routes(self):
+        """ Get the routes """
         return self._routes
 
     @property
     def certs(self):
+        """ Get the certs """
         return self._certs
 
     def clear_changes(self):
+        """ Clear the queued changes """
         self._queued_changes = []
         self._executed_changes = collections.deque()
 
@@ -37,22 +40,22 @@ class KongChangeInvoker(object):
     def load_config(self):
         """Retrieves the current kong route and certificate configuration details.
         """
-        if len(self._queued_changes) > 0:
+        if self._queued_changes:
             raise KongChangeInvokerError(
-                'Unable to load config while changes are queued') 
+                'Unable to load config while changes are queued')
         self._certs = self._api.list_certificates()
         self._routes = self._api.list_routes()
 
-    def set_sni_cert(self, sni, fullchain_str, key_str, 
+    def set_sni_cert(self, sni, fullchain_str, key_str,
             delete_unused_certs=True):
         """Sets a SNI with a certificate.
 
         If the SNI does not exist then it will be created.
         If the certificate does not exist then it will be created.
-        If the certificate previously used by the SNI no longer references 
+        If the certificate previously used by the SNI no longer references
         any SNIs then it is deleted.
 
-        All changes are queued, operations on Kong Admin API to commit the 
+        All changes are queued, operations on Kong Admin API to commit the
         changes will perfromed by apply_changes()
 
         """
@@ -64,63 +67,63 @@ class KongChangeInvoker(object):
             # Create certificate
             cert_id = str(uuid.uuid4())
             cert = {
-                "id":cert_id,
-                "cert":fullchain_str,
-                "key":key_str,
-                "snis":[]
+                "id": cert_id,
+                "cert": fullchain_str,
+                "key": key_str,
+                "snis": []
             }
             self._certs.append(cert)
-            logger.info("Adding certificate %s" 
-                % cert_id) 
+            logger.info("Adding certificate %s",
+                cert_id)
             self._queue_change(
-                AddCertificate(cert_id, 
-                    CertificateData(fullchain_str,key_str)))
+                AddCertificate(cert_id,
+                    CertificateData(fullchain_str, key_str)))
 
         else:
             cert_id = cert['id']
-            
+
 
         if old_cert is None:
             # create a new SNI
-            logger.info("Creating SNI %s with certificate %s"
-                % (sni, cert_id))
+            logger.info("Creating SNI %s with certificate %s",
+                sni, cert_id)
             self._queue_change(CreateSni(sni, cert_id))
 
         else:
-            old_cert_id=old_cert['id']
+            old_cert_id = old_cert['id']
 
             if old_cert_id == cert_id:
                 logger.info(("SNI %s already using certificate %s. "
-                    "No action required")
-                    % (sni, cert_id))
+                    "No action required"),
+                    sni, cert_id)
             else:
                 # Update SNI with the newly created certificate
-                logger.info("Updating SNI %s certificate from %s to %s"
-                    % (sni, old_cert_id, cert_id))
+                logger.info("Updating SNI %s certificate from %s to %s",
+                    sni, old_cert_id, cert_id)
                 self._queue_change(
                     UpdateSniCertificate(sni, cert_id, old_cert_id))
 
                 # update cert snis reference
-                old_snis = old_cert.get('snis',[])
+                old_snis = old_cert.get('snis', [])
                 old_snis.remove(sni)
-                if len(old_snis) <= 0 and delete_unused_certs:
-                    # Certificate no longer references any snis and 
+                if not old_snis and delete_unused_certs:
+                    # Certificate no longer references any snis and
                     # can be deleted
                     del self._certs[old_cert_index]
                     logger.info("Deleting certificate %s "
-                        "as no SNIs are using it"
-                        % old_cert_id)
-                    self._queue_change(DeleteCertificate(old_cert_id, 
+                        "as no SNIs are using it",
+                        old_cert_id)
+                    self._queue_change(DeleteCertificate(old_cert_id,
                         CertificateData(
-                            old_cert.get('cert'),old_cert.get('key'))))
-        
+                            old_cert.get('cert'), old_cert.get('key'))))
+
         # Update cert with reference to sni
-        snis = cert.get('snis',[])
+        snis = cert.get('snis', [])
         snis.append(sni)
         cert['snis'] = list(set(snis))
 
     def _get_cert(self, fullchain_str, key_str):
-        """helper function to find the certificate matching the 
+        """helper function to find the certificate matching the
         fullchain and key
         """
         for c in self._certs:
@@ -131,75 +134,78 @@ class KongChangeInvoker(object):
     def _get_sni_cert(self, sni):
         """helper function to find the certificate used by the SNI.
         """
-        i=0
+        i = 0
         for c in self._certs:
-            if sni in c.get('snis',[]):
+            if sni in c.get('snis', []):
                 return c, i
             i += 1
         return None, -1
 
     def redirect_route(self, route_id):
+        """ Configure http to https redirection for a route """
         route = self._get_route(route_id)
 
         if not route:
             raise KongChangeInvokerError("Unable to redirect route for %s "
             "as there is no matching route" % route_id)
 
-        old_protocols = route.get('protocols',[])
+        old_protocols = route.get('protocols', [])
         redirect_protocols = ['https']
-        logger.info("Updating Route %s protocols from %s to %s"
-            % (route_id, str(old_protocols), str(redirect_protocols)))
-        self._queue_change(UpdateRouteProtocols(route_id, 
+        logger.info("Updating Route %s protocols from %s to %s",
+           route_id, str(old_protocols), str(redirect_protocols))
+        self._queue_change(UpdateRouteProtocols(route_id,
             redirect_protocols, old_protocols))
         route['protocols'] = redirect_protocols
 
-    def create_http01_challenge_service(self, 
+    def create_http01_challenge_service(self,
             domain, validation, validation_path):
+        """ Create a service to complete a 'let's encrypt' HTTP01 challenge """
         service_id = str(uuid.uuid4())
         plugin_id = str(uuid.uuid4())
         route_id = str(uuid.uuid4())
         logger.info("Adding http01 challenge service %s "
-            "(with request-termination plugin %s and route %s)" 
-                % (service_id,plugin_id,route_id)) 
+            "(with request-termination plugin %s and route %s)",
+            service_id, plugin_id, route_id)
         self._queue_change(
-                CreateService(service_id, 
+                CreateService(service_id,
                     {
-                        "name" : "certbot-kong_TEMPORARY_ACME_challenge",
-                        "url":"http://invalid.example.com"
+                        "name": "certbot-kong_TEMPORARY_ACME_challenge",
+                        "url": "http://invalid.example.com"
                     }
                 ))
         self._queue_change(
-                CreatePlugin(plugin_id, 
+                CreatePlugin(plugin_id,
                     {
-                        "service":{"id":service_id},
-                        "name":"request-termination",
-                        "config":{
-                            "status_code":200,
-                            "content_type":"text/plain",
-                            "body":validation
+                        "service": {"id": service_id},
+                        "name": "request-termination",
+                        "config": {
+                            "status_code": 200,
+                            "content_type": "text/plain",
+                            "body": validation
                         }
                     }
                 ))
-        
+
         self._queue_change(
-                CreateRoute(route_id, 
+                CreateRoute(route_id,
                     {
-                        "service":{"id":service_id},
-                        "paths":[validation_path],
-                        "hosts":[domain],
-                        "protocols":["http"]
+                        "service": {"id": service_id},
+                        "paths": [validation_path],
+                        "hosts": [domain],
+                        "protocols": ["http"]
                     }
                 ))
-            
-            
+
+
     def _get_route(self, route_id):
         for r in self._routes:
-            if r['id']==route_id:
+            if r['id'] == route_id:
                 return r
         return None
 
-            
+
     def get_changes_details(self):
+        """ Get a list of changes queued to be invoked """
         details = []
 
         for change in self._queued_changes:
@@ -207,9 +213,9 @@ class KongChangeInvoker(object):
 
         return details
 
-    def _queue_change(self, Change, #type: Change
+    def _queue_change(self, change, #type: Change
             ):
-        self._queued_changes.append(Change)
+        self._queued_changes.append(change)
 
     def apply_changes(self):
         """ Apply changes.
@@ -222,8 +228,8 @@ class KongChangeInvoker(object):
             except:
                 # revert changes
                 self.undo_changes()
-                raise 
-        self._queued_changes=[]
+                raise
+        self._queued_changes = []
 
     def undo_changes(self):
         """ undo changes
@@ -233,34 +239,34 @@ class KongChangeInvoker(object):
 
             try:
                 change.undo(self._api)
-            except:
-                UndoChangesError(
-                    change, 
-                    self._executed_changes, 
+            except Exception:
+                raise UndoChangesError(
+                    change,
+                    self._executed_changes,
                     "Unable to undo changes."
                     " Configuration may be in an inconsitant state")
-            
-        
-
 
 class Change(object):
     """Change interface"""
 
     def execute(self, api #type: api
             ):
+        """ apply the change """
         raise NotImplementedError
-    
+
     def undo(self, api #type: api
             ):
+        """ undo the change """
         raise NotImplementedError
 
     def get_details(self):
+        """ get details of the change """
         raise NotImplementedError
 
 class AddCertificate(Change):
     """Change to add a new certificate to kong."""
-    
-    def __init__(self, 
+
+    def __init__(self,
         certificate_id,
         certificate_data #type: CertificateData
             ):
@@ -269,14 +275,15 @@ class AddCertificate(Change):
 
     @property
     def certificate_id(self):
+        """ get the certificate_id """
         return self._certificate_id
 
     def execute(self, api #type: api
             ):
         api.update_or_create_certificate(
             self._certificate_id,
-            self._certificate_data.cert, 
-            self._certificate_data.key, 
+            self._certificate_data.cert,
+            self._certificate_data.key,
             self._certificate_data.snis
         )
 
@@ -289,7 +296,7 @@ class AddCertificate(Change):
 
 class DeleteCertificate(Change):
     """Change to delete a certificate in kong."""
-    
+
     def __init__(self, certificate_id, certificate_data #type: CertificateData
             ):
         self._certificate_id = certificate_id
@@ -298,14 +305,14 @@ class DeleteCertificate(Change):
     def execute(self, api #type: api
             ):
         api.delete_certificate(self._certificate_id)
-    
+
     def undo(self, api #type: api
             ):
-        
+
         api.update_or_create_certificate(
             self._certificate_id,
-            self._certificate_data.cert, 
-            self._certificate_data.key, 
+            self._certificate_data.cert,
+            self._certificate_data.key,
             self._certificate_data.snis
         )
 
@@ -325,16 +332,16 @@ class UpdateCertificate(Change):
     def execute(self, api):
         api.update_certificate(
             self._certificate_id,
-            self._certificate_data.cert, 
-            self._certificate_data.key, 
+            self._certificate_data.cert,
+            self._certificate_data.key,
             self._certificate_data.snis
         )
-    
+
     def undo(self, api):
         api.update_certificate(
             self._certificate_id,
-            self._old_certificate_data.cert, 
-            self._old_certificate_data.key, 
+            self._old_certificate_data.cert,
+            self._old_certificate_data.key,
             self._old_certificate_data.snis
         )
 
@@ -356,19 +363,19 @@ class UpdateRouteProtocols(Change):
             self.route_id,
             self.protocols
         )
-    
+
     def undo(self, api):
-       api.update_route_protocols(
+        api.update_route_protocols(
             self.route_id,
             self.old_protocols
         )
-    
+
     def get_details(self):
         return "Update route protocol %s" % self.route_id
 
 class UpdateSniCertificate(Change):
     """Change to update an existing sni with a certificate."""
-    def __init__(self, 
+    def __init__(self,
             sni, # type str
             cert_id, #type str
             old_cert_id #type str
@@ -382,9 +389,9 @@ class UpdateSniCertificate(Change):
             self._sni,
             self._cert_id
         )
-    
+
     def undo(self, api):
-       api.update_sni(
+        api.update_sni(
             self._sni,
             self._old_cert_id
         )
@@ -394,7 +401,7 @@ class UpdateSniCertificate(Change):
 
 class CreateSni(Change):
     """Change to update an existing sni with a certificate."""
-    def __init__(self, 
+    def __init__(self,
             sni, # type str
             cert_id #type str
             ):
@@ -406,9 +413,9 @@ class CreateSni(Change):
             self._sni,
             self._cert_id
         )
-    
+
     def undo(self, api):
-       api.delete_sni(
+        api.delete_sni(
             self._sni
         )
 
@@ -417,7 +424,7 @@ class CreateSni(Change):
 
 class CreateService(Change):
     """Change to create a service."""
-    def __init__(self, 
+    def __init__(self,
             service_id, # type str
             data #type Dict
             ):
@@ -426,9 +433,9 @@ class CreateService(Change):
 
     def execute(self, api):
         api.update_or_create_service(self._service_id, self._data)
-    
+
     def undo(self, api):
-       api.delete_service(
+        api.delete_service(
             self._service_id
         )
 
@@ -437,7 +444,7 @@ class CreateService(Change):
 
 class CreatePlugin(Change):
     """Change to create a plugin."""
-    def __init__(self, 
+    def __init__(self,
             plugin_id, # type str
             data #type Dict
             ):
@@ -446,9 +453,9 @@ class CreatePlugin(Change):
 
     def execute(self, api):
         api.update_or_create_plugin(self._plugin_id, self._data)
-    
+
     def undo(self, api):
-       api.delete_plugin(
+        api.delete_plugin(
             self._plugin_id
         )
 
@@ -458,7 +465,7 @@ class CreatePlugin(Change):
 
 class CreateRoute(Change):
     """Change to create a route."""
-    def __init__(self, 
+    def __init__(self,
             route_id, # type str
             data #type Dict
             ):
@@ -467,9 +474,9 @@ class CreateRoute(Change):
 
     def execute(self, api):
         api.update_or_create_route(self._route_id, self._data)
-    
+
     def undo(self, api):
-       api.delete_route(
+        api.delete_route(
             self._route_id
         )
 
@@ -477,6 +484,7 @@ class CreateRoute(Change):
         return "Add Route %s" % self._route_id
 
 class CertificateData(object):
+    """ certificat data """
     def __init__(self, cert, key, snis=None):
         self.cert = cert
         self.key = key
@@ -486,10 +494,10 @@ class CertificateData(object):
 class UndoChangesError(Exception):
     """ Rasied when an error is encountered while undoing changes"""
     def __init__(self, failed_change, remaining_changes, message):
+        super(UndoChangesError, self).__init__()
         self.failed_change = failed_change
         self.remaining_changes = remaining_changes
         self.message = message
 
 class ApplyChangesError(Exception):
     """Raised when an error occurs while applying changes"""
-    pass
