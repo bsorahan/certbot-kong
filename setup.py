@@ -10,6 +10,7 @@ setup(
     install_requires=[
         'mock',
         'zope.interface',
+        'cryptography>=2.8',
         'certbot'
     ],
     entry_points={
