@@ -108,7 +108,7 @@ Note in the output that certbot-kong has added a new certificate, created a SNI 
 ```
 ...
 Adding certificate 723b1e4e-a3ff-457b-ba07-af09cf60852b
-Creating SNI example.squashedbug.com with certificate 723b1e4e-a3ff-457b-ba07-af09cf60852b
+Creating SNI example.com with certificate 723b1e4e-a3ff-457b-ba07-af09cf60852b
 Updating Route a432a926-f3e7-4492-ba94-ac1e77f8bac3 protocols from ['http'] to ['https']
 ...
 ```
@@ -130,7 +130,7 @@ curl $KONG_ADMIN_URL/certificates/723b1e4e-a3ff-457b-ba07-af09cf60852b
   "id": "723b1e4e-a3ff-457b-ba07-af09cf60852b",
   "tags": null,
   "key": "-----BEGIN PRIVATE KEY-----...",
-  "snis": ["example.squashedbug.com"]
+  "snis": ["example.com"]
 }
 ```
 
@@ -179,7 +179,7 @@ curl $KONG_ADMIN_URL/routes/a432a926-f3e7-4492-ba94-ac1e77f8bac3
   "regex_priority": 0,
   "updated_at": 1581078926,
   "sources": null,
-  "hosts": ["example.squashedbug.com"],
+  "hosts": ["example.com"],
   "https_redirect_status_code": 426,
   "tags": null,
   "created_at": 1581078795
