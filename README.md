@@ -56,7 +56,7 @@ certbot --help certbot-kong:kong
 
 ## Example Certificate Installation and Renewal
 
-In this example will start with a Kong service and route proxying the github API exposed over http and then use certbot-kong to obtain a certificate and convert the service to be exposed over only https using the new certificate.
+In this example we will start with a Kong service and route proxying the github API exposed over http and then use certbot-kong to obtain a certificate and convert the service to be exposed over only https using the new certificate.
 
 ## 1. Prerequisites
 
@@ -76,7 +76,7 @@ EMAIL=ben@example.com
 
 ### 3. Create Github API Proxy
 
-Create the Github service and route. The route is created with only the http protocol. Later we will see this converted to https.
+Create the Github service and route in Kong. The route is created with only the http protocol. Later we will see this converted to https.
 
 ```sh
 # create the service
@@ -107,17 +107,116 @@ Note in the output that certbot-kong has added a new certificate, created a SNI 
 
 ```
 ...
-Adding certificate 9a7e3de3-b6dd-4deb-bc57-7a82846c98f3
-Creating SNI example.com with certificate 9a7e3de3-b6dd-4deb-bc57-7a82846c98f3
-Updating Route c63a6fa9-c315-4b11-bdab-973ab86f11e7 protocols from ['http'] to ['https']
+Adding certificate 723b1e4e-a3ff-457b-ba07-af09cf60852b
+Creating SNI example.squashedbug.com with certificate 723b1e4e-a3ff-457b-ba07-af09cf60852b
+Updating Route a432a926-f3e7-4492-ba94-ac1e77f8bac3 protocols from ['http'] to ['https']
 ...
 ```
 
-Kong Certificate, SNI, Route resources
+We can see this in more detail be looking at the Kong Certificate, SNI and Route resources.
+
+**Certificate**
+
+```sh
+curl $KONG_ADMIN_URL/certificates/723b1e4e-a3ff-457b-ba07-af09cf60852b
+```
+
+`output`
+
+```json
+{
+  "created_at": 1581078926,
+  "cert": "-----BEGIN CERTIFICATE-----...",
+  "id": "723b1e4e-a3ff-457b-ba07-af09cf60852b",
+  "tags": null,
+  "key": "-----BEGIN PRIVATE KEY-----...",
+  "snis": ["example.squashedbug.com"]
+}
+```
+
+**SNI**
+
+```sh
+curl $KONG_ADMIN_URL/snis/example.com
+```
+
+`output`
+
+```json
+{
+  "created_at": 1581078926,
+  "id": "f7c5e7f3-01e7-4a5a-abb9-dafe2f0deac2",
+  "tags": null,
+  "name": "example.com",
+  "certificate": { "id": "723b1e4e-a3ff-457b-ba07-af09cf60852b" }
+}
+```
+
+Note that the sni is using the certficate.
+
+**Route**
+
+```sh
+curl $KONG_ADMIN_URL/routes/a432a926-f3e7-4492-ba94-ac1e77f8bac3
+```
+
+`output`
+
+```json
+{
+  "id": "a432a926-f3e7-4492-ba94-ac1e77f8bac3",
+  "path_handling": "v0",
+  "paths": ["/github"],
+  "destinations": null,
+  "headers": null,
+  "protocols": ["https"],
+  "methods": null,
+  "snis": null,
+  "service": { "id": "e9755238-85b2-47c3-9831-859d72735584" },
+  "name": null,
+  "strip_path": true,
+  "preserve_host": false,
+  "regex_priority": 0,
+  "updated_at": 1581078926,
+  "sources": null,
+  "hosts": ["example.squashedbug.com"],
+  "https_redirect_status_code": 426,
+  "tags": null,
+  "created_at": 1581078795
+}
+```
+
+Note that only https is the only protocol available.
 
 Now when we try to access the service over http we receive the following error.
 
-The service is now only available over https and is using the new certificate.
+```sh
+curl http://$DOMAIN/github/users/bsorahan/repos
+```
+
+`output`
+
+```json
+{ "message": "Please use HTTPS protocol" }
+```
+
+The service is now only available over https so we can get a successful response using.
+
+```sh
+curl https://$DOMAIN/github/users/bsorahan/repos
+```
+
+We can also see that we are using the certificate issued by Let's Encrypt.
+
+```sh
+echo '' | openssl s_client -connect $DOMAIN:443 2>/dev/null | openssl x509 -noout -issuer
+```
+
+`output`
+
+```
+issuer=C = US, O = Let's Encrypt, CN = Let's Encrypt Authority X3
+```
 
 ### 5. Test automatic renewal
 
