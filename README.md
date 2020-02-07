@@ -6,6 +6,8 @@ The plugin uses the Kong admin API to manipulate the route, certificate, SNI and
 
 ## Install certbot-kong
 
+Ensure that your system has access to the Kong admin URL and has [certbot](https://certbot.eff.org/instructions) installed.
+
 The certbot-kong plugin can be installed using pip.
 
 ```sh
@@ -40,13 +42,13 @@ This will configure Kong to respond to http-01 challenges to verify ownership of
 
 1. Create certificate object for the issued certificate
 2. Create or update SNIs that match the certificates domains (for wildcard certificates, SNIs will also be created from matching route hosts)
-3. Delete certifciates which no longer have any SNIs
+3. Delete certificates which no longer have any SNIs
 
 ### Advanced Usage
 
 Refer to certbot documentation for usage of certbot https://certbot.eff.org/docs/using.html. As certbot-kong is a plugin for certbot the documentation describes other common usage such as automated certificate renewal.
 
-Certbot-kong has both authenticator and installer plugin components which can be substituted with other plugins as requried. See https://certbot.eff.org/docs/using.html#combining-plugins.
+Certbot-kong has both authenticator and installer plugin components which can be substituted with other plugins as required. See https://certbot.eff.org/docs/using.html#combining-plugins.
 
 For certbot-kong plugin configuration options run:
 
@@ -56,12 +58,12 @@ certbot --help certbot-kong:kong
 
 ## Example Certificate Installation and Renewal
 
-In this example we will start with a Kong service and route proxying the github API exposed over http and then use certbot-kong to obtain a certificate and convert the service to be exposed over only https using the new certificate.
+In this example we will start with a Kong service and route exposed over http and then use certbot-kong to obtain a Let's Encrypt certificate and convert the service to allow only https using the new certificate.
 
 ## 1. Prerequisites
 
-1. Kong is installed and admin URL can be accessed, see (https://konghq.com/install/)
-2. Certbot is installed, see (https://certbot.eff.org/instructions)
+1. Kong is installed and admin URL can be accessed, see https://konghq.com/install/
+2. Certbot is installed, see https://certbot.eff.org/instructions
 3. Certbot-kong is installed as per above
 
 ### 2. Setup Environment
@@ -74,9 +76,11 @@ KONG_ADMIN_URL=http://localhost:8001
 EMAIL=ben@example.com
 ```
 
-### 3. Create Github API Proxy
+### 3. Create Service and Route
 
-Create the Github service and route in Kong. The route is created with only the http protocol. Later we will see this converted to https.
+Create the service and route in Kong. The route is created with only the http protocol. Later we will see this converted to https.
+
+For this example we will proxy the Github API with Kong.
 
 ```sh
 # create the service
@@ -200,7 +204,7 @@ _output_
 { "message": "Please use HTTPS protocol" }
 ```
 
-The service is now only available over https so we can get a successful response using.
+The service is now only available over https so we can get a successful response using the following.
 
 ```sh
 curl https://$DOMAIN/github/users/bsorahan/repos
