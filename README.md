@@ -115,13 +115,13 @@ Updating Route a432a926-f3e7-4492-ba94-ac1e77f8bac3 protocols from ['http'] to [
 
 We can see this in more detail be looking at the Kong Certificate, SNI and Route resources.
 
-**Certificate**
+#### Certificate
 
 ```sh
 curl $KONG_ADMIN_URL/certificates/723b1e4e-a3ff-457b-ba07-af09cf60852b
 ```
 
-`output`
+_output_
 
 ```json
 {
@@ -134,13 +134,13 @@ curl $KONG_ADMIN_URL/certificates/723b1e4e-a3ff-457b-ba07-af09cf60852b
 }
 ```
 
-**SNI**
+#### SNI
 
 ```sh
 curl $KONG_ADMIN_URL/snis/example.com
 ```
 
-`output`
+_output_
 
 ```json
 {
@@ -152,15 +152,15 @@ curl $KONG_ADMIN_URL/snis/example.com
 }
 ```
 
-Note that the sni is using the certficate.
+Note that the SNI is using the certificate.
 
-**Route**
+#### Route
 
 ```sh
 curl $KONG_ADMIN_URL/routes/a432a926-f3e7-4492-ba94-ac1e77f8bac3
 ```
 
-`output`
+_output_
 
 ```json
 {
@@ -186,7 +186,7 @@ curl $KONG_ADMIN_URL/routes/a432a926-f3e7-4492-ba94-ac1e77f8bac3
 }
 ```
 
-Note that only https is the only protocol available.
+Note that https is the only protocol available.
 
 Now when we try to access the service over http we receive the following error.
 
@@ -194,7 +194,7 @@ Now when we try to access the service over http we receive the following error.
 curl http://$DOMAIN/github/users/bsorahan/repos
 ```
 
-`output`
+_output_
 
 ```json
 { "message": "Please use HTTPS protocol" }
@@ -212,18 +212,18 @@ We can also see that we are using the certificate issued by Let's Encrypt.
 echo '' | openssl s_client -connect $DOMAIN:443 2>/dev/null | openssl x509 -noout -issuer
 ```
 
-`output`
+_output_
 
 ```
 issuer=C = US, O = Let's Encrypt, CN = Let's Encrypt Authority X3
 ```
 
-### 5. Test automatic renewal
+### 5. Automatic Certificate Renewal
 
-We can verify that the certificate can also be automatically renewed.
+We can verify that the certificate can also be renewed.
 
 ```sh
 certbot renew --dry-run
 ```
 
-Depending on your system, steps to setup up automatic certificate renewal may differ. Refer to [certbot](https://certbot.eff.org/instructions) documentation for instruction applicable to your system.
+Automatic certificate renewal may already have been configured when certbot was installed on your system (i.e. using cron or similar). Refer to [certbot documentation](https://certbot.eff.org/instructions) for instruction applicable to your system.
