@@ -1,8 +1,13 @@
 # Certbot-kong
 
-Certbot-kong is a plugin for [Certbot](https://certbot.eff.org/) to install HTTPS certificates for [Kong](https://konghq.com/kong/). Certbot is the tool which is commonly used to automatically obtain, renew and install certificates issued by [Let's Encrypt](https://letsencrypt.org/) or any other CA that uses the ACME protocol.
+Certbot-kong is a plugin for [Certbot](https://certbot.eff.org/) to install HTTPS certificates for [Kong](https://konghq.com/kong/). Certbot is the tool which is commonly used to automatically obtain, renew and install certificates issued by [Let's Encrypt](https://letsencrypt.org/) or any other issuers that use the ACME protocol.
 
 The plugin uses the Kong admin API to manipulate the route, certificate, SNI and service resources to enable Kong to respond to ACME http-01 challenges, install certificates and configure service routes to use HTTPS.
+
+### Kong ACME Plugin
+
+As of Kong v2.0.x, Kong now provides the [ACME plugin](https://docs.konghq.com/hub/kong-inc/acme/). For the straight forward use case of obtaining certificate through ACME http-01 challenge and automated renewal the ACME plugin may be sufficient for your needs.
+However if you have more complicated requirements or using an older version of Kong then certbot-kong along with certbot's other features and plugins may be the solution. For example, certbot-kong with a DNS authenticator can be used to manage wildcard certificates which is not supported in the ACME plugin.
 
 ## Install certbot-kong
 
@@ -117,9 +122,11 @@ Updating Route a432a926-f3e7-4492-ba94-ac1e77f8bac3 protocols from ['http'] to [
 ...
 ```
 
-We can see this in more detail be looking at the Kong Certificate, SNI and Route resources.
+We can see this in more detail by looking at the Kong Certificate, SNI and Route resources.
 
 #### Certificate
+
+Certbot-kong has created the certificate.
 
 ```sh
 curl $KONG_ADMIN_URL/certificates/723b1e4e-a3ff-457b-ba07-af09cf60852b
@@ -140,6 +147,8 @@ _output_
 
 #### SNI
 
+Certbot-kong has created a SNI for the domain. Note that the SNI is using the certificate.
+
 ```sh
 curl $KONG_ADMIN_URL/snis/example.com
 ```
@@ -156,9 +165,9 @@ _output_
 }
 ```
 
-Note that the SNI is using the certificate.
-
 #### Route
+
+Certbot-kong has updated the route to allow only https.
 
 ```sh
 curl $KONG_ADMIN_URL/routes/a432a926-f3e7-4492-ba94-ac1e77f8bac3
@@ -189,8 +198,6 @@ _output_
   "created_at": 1581078795
 }
 ```
-
-Note that https is the only protocol available.
 
 Now when we try to access the service over http we receive the following error.
 
